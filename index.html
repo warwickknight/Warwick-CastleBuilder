@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>WARWICK: Castle Builder — 914 AD Mercian Burh</title>
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Three.js CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+  <!-- Google Fonts: Cinzel, Fredoka & Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800;900&family=Fredoka:wght@500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="css/styles.css">
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            cinzel: ['Cinzel', 'serif'],
+            fredoka: ['Fredoka', 'sans-serif'],
+            sans: ['Inter', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="font-sans antialiased text-white select-none overflow-hidden bg-slate-950">
+  <!-- 3D WebGL Canvas -->
+  <canvas id="webgl-canvas"></canvas>
+
+  <!-- 3D-to-2D HTML Projected Bubbles Container -->
+  <div id="bubble-container" class="absolute inset-0 pointer-events-none z-10"></div>
+
+  <!-- Action Radial Progress Ring -->
+  <svg id="action-ring" viewBox="0 0 36 36">
+    <path class="text-slate-900/80" stroke-width="4.2" stroke="currentColor" fill="none"
+      d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+    <path id="action-ring-progress" class="text-amber-400 drop-shadow-[0_0_10px_rgba(245,158,11,0.9)]"
+      stroke-width="4.2" stroke-dasharray="0, 100" stroke-linecap="round" stroke="currentColor" fill="none"
+      d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+  </svg>
+
+  <!-- Virtual Touch Joystick -->
+  <div id="joystick-base" class="absolute w-24 h-24 -ml-12 -mt-12 rounded-full border-2 border-amber-400/40 bg-slate-950/60 backdrop-blur pointer-events-none z-20 hidden">
+    <div id="joystick-stick" class="absolute top-1/2 left-1/2 w-10 h-10 -ml-5 -mt-5 rounded-full bg-gradient-to-tr from-amber-600 to-amber-300 shadow-xl border border-amber-200"></div>
+  </div>
+
+  <!-- Minimalist Mobile-First Top HUD -->
+  <header class="absolute top-2 inset-x-2 sm:inset-x-4 pointer-events-none z-20 flex justify-between items-center gap-1.5 sm:gap-2">
+    <!-- Left: Resources Pill (Timber, Stone, Silver, Pack) -->
+    <div class="pointer-events-auto flex items-center gap-2 sm:gap-2.5 bg-slate-950/85 backdrop-blur-md border border-slate-700/60 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full shadow-lg text-[11px] sm:text-xs font-fredoka">
+      <div class="flex items-center gap-1" title="Timber Logs">
+        <span class="text-xs sm:text-sm">🪵</span>
+        <span id="hud-timber" class="text-amber-300 font-bold">20</span>
+      </div>
+      <div class="flex items-center gap-1" title="Sandstone Blocks">
+        <span class="text-xs sm:text-sm">🪨</span>
+        <span id="hud-stone" class="text-orange-300 font-bold">10</span>
+      </div>
+      <div class="flex items-center gap-1" title="Silver Coins">
+        <span class="text-xs sm:text-sm">🪙</span>
+        <span id="hud-silver" class="text-amber-400 font-bold">40</span>
+      </div>
+      <!-- Carrying Pack Indicator -->
+      <div id="hud-carry-pill" class="flex items-center gap-0.5 pl-1.5 border-l border-slate-700/80 text-[10px] sm:text-[11px] text-slate-300" title="Backpack capacity">
+        <span id="hud-carry-icon">🎒</span>
+        <span id="hud-carrying" class="font-bold text-amber-200">0</span>/<span id="hud-carry-max">4</span>
+        <span id="hud-carry-type" class="hidden"></span>
+      </div>
+    </div>
+
+    <!-- Right: Day Status & Castle Built Pill -->
+    <div class="pointer-events-auto flex items-center gap-2 sm:gap-2 bg-slate-950/85 backdrop-blur-md border border-slate-700/60 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full shadow-lg text-[11px] sm:text-xs font-fredoka">
+      <div class="flex items-center gap-1" title="Time of Day">
+        <span id="hud-daynight-icon" class="text-xs sm:text-sm">☀️</span>
+        <span id="hud-day-text" class="text-amber-200 font-semibold">Day 1</span>
+        <span id="hud-cycle-phase" class="hidden"></span>
+        <span id="hud-night-threat" class="hidden"></span>
+      </div>
+      <div class="w-px h-3 bg-slate-700/80"></div>
+      <div class="flex items-center gap-1 font-cinzel text-amber-300 font-bold" title="Burh Construction Progress">
+        <span>🏰</span>
+        <span><span id="hud-completion">0</span>%</span>
+      </div>
+    </div>
+
+    <!-- Hidden state elements preserved for script compatibility -->
+    <div class="hidden">
+      <span id="hud-iron">0</span>
+      <span id="hud-grain">0</span>
+      <span id="hud-morale">100</span>
+      <span id="hud-guards">0</span>
+      <span id="hud-housing">0</span>
+    </div>
+  </header>
+
+  <!-- Raid Warning Banner (Hidden by default, pulses when raiders incoming) -->
+  <div id="raid-warning-banner" class="hidden absolute top-12 sm:top-16 left-1/2 -translate-x-1/2 z-20 raid-banner-pulse pointer-events-none max-w-[92vw]">
+    <div class="bg-red-950/90 border border-red-500 backdrop-blur px-3.5 py-1.5 sm:px-5 sm:py-2 rounded-xl shadow-2xl flex items-center gap-2 sm:gap-3 text-center">
+      <span class="text-lg sm:text-2xl animate-bounce">📯</span>
+      <div>
+        <div class="font-cinzel text-xs sm:text-sm font-black text-red-300 tracking-wider">
+          DANISH RAID APPROACHING!
+        </div>
+        <div class="text-[10px] sm:text-xs text-red-200 font-medium">
+          Longship landing in <span id="hud-raid-timer" class="font-bold text-amber-300">15</span>s along Avon!
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Historical Parchment Chronicle Modal (Stealth Learning Cards) -->
+  <div id="chronicle-modal" class="hidden absolute inset-0 z-30 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm pointer-events-auto">
+    <div class="parchment-card rounded-2xl p-6 sm:p-8 max-w-md w-full text-slate-900 shadow-2xl border-4 border-amber-800">
+      <div class="flex justify-between items-start mb-2">
+        <span id="chronicle-era" class="text-xs font-bold font-cinzel uppercase tracking-wider text-amber-900 bg-amber-200/60 px-2.5 py-1 rounded-full border border-amber-700/30">
+          Act I — 914 AD
+        </span>
+        <button onclick="window.eraManager.hideChronicleCard()" class="text-amber-900 font-bold hover:text-black text-lg p-1">✕</button>
+      </div>
+
+      <h2 id="chronicle-title" class="font-cinzel text-xl sm:text-2xl font-black text-amber-950 mt-2 mb-3 leading-tight">
+        914 AD: Æthelflæd's Mercian Burh
+      </h2>
+
+      <p id="chronicle-text" class="text-sm sm:text-base text-slate-800 leading-relaxed mb-4">
+        Æthelflæd, Lady of the Mercians, fortified the strategic sandstone bluff over the Avon to block Danish raids along the frontier.
+      </p>
+
+      <div id="chronicle-takeaway" class="bg-amber-100/80 border border-amber-700/30 rounded-xl p-3 text-xs sm:text-sm font-semibold text-amber-950 mb-5">
+        💡 Stealth Learning takeaway
+      </div>
+
+      <div class="flex justify-between items-center">
+        <div class="text-xs text-amber-900 font-bold flex items-center gap-1">
+          <span>Reward:</span> <span class="text-emerald-700 font-black">+20 Silver</span>
+        </div>
+        <button onclick="window.eraManager.hideChronicleCard()" class="font-cinzel bg-gradient-to-r from-amber-700 to-amber-900 hover:from-amber-600 hover:to-amber-800 text-amber-100 font-bold px-5 py-2 rounded-xl shadow-lg border border-amber-600 text-sm">
+          Claim Chronicle 📜
+        </button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- Floating Build Fort Button (Mobile-First Thumb-Friendly) -->
+  <button id="btn-open-build" onclick="window.buildingPlacement.openBuildMenu()" class="pointer-events-auto fixed bottom-3 right-3 sm:bottom-5 sm:right-5 z-20 flex items-center gap-1.5 bg-gradient-to-r from-amber-600 via-amber-500 to-yellow-500 hover:from-amber-500 hover:to-yellow-400 text-slate-950 font-cinzel font-black px-3.5 py-2 sm:px-4 sm:py-2.5 rounded-xl shadow-xl border border-amber-300 active:scale-95 transition-all cursor-pointer" title="Open Fort Construction Menu">
+    <span class="text-base sm:text-lg leading-none">🔨</span>
+    <span class="text-xs sm:text-sm tracking-wider uppercase">Build Fort</span>
+  </button>
+
+  <!-- Mobile-Friendly Build Menu Drawer (Bottom Sheet) -->
+  <div id="build-menu-drawer" class="hidden fixed inset-x-0 bottom-0 z-30 pointer-events-auto flex flex-col max-h-[85vh] sm:max-h-[75vh] bg-slate-950/95 backdrop-blur-xl border-t-2 border-amber-500/60 rounded-t-3xl shadow-2xl transition-transform duration-300">
+    <!-- Drawer Header -->
+    <div class="flex items-center justify-between px-5 py-3 border-b border-slate-800/80">
+      <div class="flex items-center gap-2">
+        <span class="text-amber-400 text-lg">🏰</span>
+        <div>
+          <h3 class="font-cinzel font-bold text-amber-200 text-sm sm:text-base leading-none">Mercian Burh Architecture</h3>
+          <p class="text-[10px] sm:text-xs text-slate-400 mt-0.5">Select a component to place freely in your hill fort</p>
+        </div>
+      </div>
+      <button onclick="window.buildingPlacement.closeBuildMenu()" class="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold flex items-center justify-center text-sm cursor-pointer">
+        ✕
+      </button>
+    </div>
+
+    <!-- Available Stockpile Resources Bar inside drawer -->
+    <div class="flex items-center justify-center gap-4 py-2 bg-slate-900/60 border-b border-slate-800/60 text-xs font-fredoka">
+      <span class="text-slate-400">Available in Stockpiles:</span>
+      <span class="text-amber-300 font-bold flex items-center gap-1">🪵 <span id="build-drawer-timber">0</span> Timber</span>
+      <span class="text-orange-300 font-bold flex items-center gap-1">🪨 <span id="build-drawer-stone">0</span> Sandstone</span>
+    </div>
+
+    <!-- Carousel / Grid of Structure Cards -->
+    <div id="build-cards-container" class="p-4 overflow-y-auto overflow-x-hidden grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 max-h-[60vh]">
+      <!-- Dynamic building cards populated by BuildingPlacement.js -->
+    </div>
+  </div>
+
+  <!-- Free Placement Controls HUD (Active when positioning a structure) -->
+  <div id="placement-hud" class="hidden fixed inset-x-0 bottom-4 z-30 pointer-events-none flex flex-col items-center gap-2.5">
+    <!-- Status / Tip Pill -->
+    <div id="placement-status-pill" class="pointer-events-auto bg-slate-950/90 backdrop-blur border border-amber-500/50 px-4 py-1.5 rounded-full shadow-2xl text-xs sm:text-sm font-fredoka flex items-center gap-2">
+      <span id="placement-status-icon">✨</span>
+      <span id="placement-status-text" class="text-amber-200 font-semibold">Touch ground to position structure</span>
+    </div>
+
+    <!-- Control Action Buttons Row (Thumb-Friendly for Mobile) -->
+    <div class="pointer-events-auto flex items-center gap-2 sm:gap-3 bg-slate-950/90 backdrop-blur-md p-2 rounded-2xl border border-slate-700/80 shadow-2xl">
+      <!-- Cancel Button -->
+      <button id="btn-cancel-placement" onclick="window.buildingPlacement.cancelPlacement()" class="px-3.5 py-2.5 sm:px-4 sm:py-3 rounded-xl bg-slate-800 hover:bg-red-900/80 border border-slate-600 text-slate-200 font-cinzel font-bold text-xs sm:text-sm flex items-center gap-1.5 active:scale-95 transition-transform cursor-pointer" title="Cancel">
+        <span>❌</span>
+        <span>Cancel</span>
+      </button>
+
+      <!-- Rotate 90° Button -->
+      <button id="btn-rotate-placement" onclick="window.buildingPlacement.rotatePreview()" class="px-3.5 py-2.5 sm:px-4 sm:py-3 rounded-xl bg-slate-800 hover:bg-amber-900/80 border border-amber-600/60 text-amber-200 font-cinzel font-bold text-xs sm:text-sm flex items-center gap-1.5 active:scale-95 transition-transform cursor-pointer" title="Rotate 90 Degrees">
+        <span class="text-base leading-none">🔄</span>
+        <span>Rotate</span>
+      </button>
+
+      <!-- Snap to Leader Button -->
+      <button id="btn-center-placement" onclick="window.buildingPlacement.snapToLeader()" class="px-3 py-2.5 sm:px-3 sm:py-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 font-cinzel font-bold text-xs sm:text-sm flex items-center gap-1.5 active:scale-95 transition-transform cursor-pointer" title="Place in front of Æthelflæd">
+        <span>🎯</span>
+        <span class="hidden sm:inline">Near Leader</span>
+      </button>
+
+      <!-- Confirm Build Button (Large Green) -->
+      <button id="btn-confirm-placement" onclick="window.buildingPlacement.confirmPlacement()" class="px-4 py-2.5 sm:px-5 sm:py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-green-500 hover:from-emerald-500 hover:to-green-400 text-white font-cinzel font-black text-xs sm:text-sm flex items-center gap-1.5 shadow-xl border-2 border-emerald-300 active:scale-95 transition-transform cursor-pointer" title="Confirm Construction">
+        <span>✅</span>
+        <span id="btn-confirm-text">Build</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Bottom Left Navigation & Controls -->
+  <footer class="absolute bottom-2 left-2 z-20 flex items-center gap-1.5 pointer-events-auto">
+    <button onclick="window.showHelpModal()" class="bg-slate-950/80 hover:bg-slate-900 text-xs font-cinzel text-amber-300 border border-amber-600/40 px-2.5 py-1 rounded-xl shadow backdrop-blur cursor-pointer" title="Chronicles">
+      📜 <span class="hidden sm:inline">Chronicles</span>
+    </button>
+    <button onclick="if(confirm('Reset Castle Progress?')) window.gameState.reset()" class="bg-slate-950/80 hover:bg-red-950/80 text-[10px] text-slate-400 hover:text-red-300 border border-slate-700 px-2 py-1 rounded-xl shadow backdrop-blur cursor-pointer" title="Reset Save">
+      🔄
+    </button>
+  </footer>
+
+  <!-- Modular Scripts -->
+  <script src="js/engine/audio.js"></script>
+  <script src="js/engine/input.js"></script>
+  <script src="js/engine/camera.js"></script>
+  <script src="js/engine/zones.js"></script>
+  <script src="js/engine/collision.js"></script>
+  <script src="js/systems/textures.js"></script>
+  <script src="js/engine/terrain.js"></script>
+  <script src="js/systems/state.js"></script>
+  <script src="js/entities/ChibiLeader.js"></script>
+  <script src="js/entities/ChibiSoldier.js"></script>
+  <script src="js/entities/WildlifeManager.js"></script>
+  <script src="js/systems/ResourceManager.js"></script>
+  <script src="js/systems/StationManager.js"></script>
+  <script src="js/systems/BuildingPlacement.js"></script>
+  <script src="js/entities/RaidManager.js"></script>
+  <script src="js/systems/EraManager.js"></script>
+  <script src="js/main.js"></script>
+
+
+  <script>
+    window.showHelpModal = function() {
+      if (window.eraManager) {
+        window.eraManager.triggerChronicle('start');
+      }
+    };
+  </script>
+</body>
+</html>
